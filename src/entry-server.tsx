@@ -7,3 +7,8 @@ function ServerEntry(props: any) {
 }
 
 export { ServerEntry }
+
+// 获取数据函数，实现服务端的数据预取
+export async function fetchData() {
+  return { user: "pre-fetch user" }
+}

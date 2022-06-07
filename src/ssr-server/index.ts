@@ -1,7 +1,10 @@
 // 后端服务
 import express, { RequestHandler, Express } from "express"
 import { ViteDevServer } from "vite"
-import path from "path"
+import path from "node:path"
+import { renderToString } from "react-dom/server"
+import React from "react"
+import fs from "node:fs"
 
 const isProd = process.env.NODE_ENV === "production"
 const cwd = process.cwd()
@@ -18,6 +21,10 @@ async function loadSsrEntryModule(vite: ViteDevServer | null) {
     const entryPath = path.join(cwd, "src/entry-server.tsx")
     return vite?.ssrLoadModule(entryPath)
   }
+}
+
+function resolveTemplatePath() {
+  return path.join(cwd, isProd ? "dist/client/index.html" : "index.html")
 }
 
 async function createSsrMiddleware(app: Express): Promise<RequestHandler> {
@@ -43,11 +50,32 @@ async function createSsrMiddleware(app: Express): Promise<RequestHandler> {
     const url = req.originalUrl
 
     // 1. 加载服务端入口模块
-    const { ServerEntry } = await loadSsrEntryModule(vite)
+    const { ServerEntry, fetchData } = await loadSsrEntryModule(vite)
 
     // 2. 数据预取
+    const data = await fetchData()
+
     // 3. 渲染组件
+    const appHtml = renderToString(React.createElement(ServerEntry, { data }))
+
     // 4. 拼接 HTML 返回响应
+    const templatePath = resolveTemplatePath()
+    let template = fs.readFileSync(templatePath, "utf-8")
+
+    // 开发模式下需要注入 HMR 、环境变量相关代码，因此需要调用 vite.transformIndexHtml
+    if (!isProd && vite) {
+      template = await vite.transformIndexHtml(url, template)
+    }
+
+    const html = template
+      .replace("<!-- SSR_APP -->", appHtml)
+      // 注入数据标签，用于客户端 hydrate
+      .replace(
+        "<!-- SSR_DATA -->",
+        `<script>window.__SSR_DATA__=${JSON.stringify(data)}</script>`
+      )
+
+    res.status(200).setHeader("Content-Type", "text/html").end(html)
   }
 }
 

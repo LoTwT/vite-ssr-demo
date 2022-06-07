@@ -3,9 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "scripts": {
-    "dev": "nodemon --watch src/ssr-server --exec 'esno src/ssr-server/index.ts'",
+    "dev": "nodemon --watch src/ssr-server/index.ts --exec esno src/ssr-server/index.ts",
     "build": "npm run build:client && npm run build:server",
-    "build:client": "vite build --outDir dist/client",
+    "build:client": "vite build --outDir dist/client --ssrManifest --manifest",
     "build:server": "vite build --ssr src/entry-server.tsx --outDir dist/server",
     "preview": "NODE_ENV=production esno src/ssr-server/index.ts"
   },

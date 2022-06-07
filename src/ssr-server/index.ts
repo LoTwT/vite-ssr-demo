@@ -5,6 +5,7 @@ import path from "node:path"
 import { renderToString } from "react-dom/server"
 import React from "react"
 import fs from "node:fs"
+import serve from "serve-static"
 
 const isProd = process.env.NODE_ENV === "production"
 const cwd = process.cwd()
@@ -27,6 +28,12 @@ function resolveTemplatePath() {
   return path.join(cwd, isProd ? "dist/client/index.html" : "index.html")
 }
 
+// 过滤出页面请求
+function matchPageUrl(url: string) {
+  if (url === "/") return true
+  return false
+}
+
 async function createSsrMiddleware(app: Express): Promise<RequestHandler> {
   let vite: ViteDevServer | null = null
 
@@ -46,36 +53,47 @@ async function createSsrMiddleware(app: Express): Promise<RequestHandler> {
   }
 
   return async (req, res, next) => {
-    // SSR 的逻辑
-    const url = req.originalUrl
+    try {
+      const url = req.originalUrl
 
-    // 1. 加载服务端入口模块
-    const { ServerEntry, fetchData } = await loadSsrEntryModule(vite)
+      if (!matchPageUrl(url)) {
+        // 走静态资源的处理
+        return await next()
+      }
 
-    // 2. 数据预取
-    const data = await fetchData()
+      // SSR 的逻辑
+      // 1. 加载服务端入口模块
+      const { ServerEntry, fetchData } = await loadSsrEntryModule(vite)
 
-    // 3. 渲染组件
-    const appHtml = renderToString(React.createElement(ServerEntry, { data }))
+      // 2. 数据预取
+      const data = await fetchData()
 
-    // 4. 拼接 HTML 返回响应
-    const templatePath = resolveTemplatePath()
-    let template = fs.readFileSync(templatePath, "utf-8")
+      // 3. 渲染组件
+      const appHtml = renderToString(React.createElement(ServerEntry, { data }))
 
-    // 开发模式下需要注入 HMR 、环境变量相关代码，因此需要调用 vite.transformIndexHtml
-    if (!isProd && vite) {
-      template = await vite.transformIndexHtml(url, template)
+      // 4. 拼接 HTML 返回响应
+      const templatePath = resolveTemplatePath()
+      let template = fs.readFileSync(templatePath, "utf-8")
+
+      // 开发模式下需要注入 HMR 、环境变量相关代码，因此需要调用 vite.transformIndexHtml
+      if (!isProd && vite) {
+        template = await vite.transformIndexHtml(url, template)
+      }
+
+      const html = template
+        .replace("<!-- SSR_APP -->", appHtml)
+        // 注入数据标签，用于客户端 hydrate
+        .replace(
+          "<!-- SSR_DATA -->",
+          `<script>window.__SSR_DATA__=${JSON.stringify(data)}</script>`
+        )
+
+      res.status(200).setHeader("Content-Type", "text/html").end(html)
+    } catch (e: any) {
+      vite?.ssrFixStacktrace(e)
+      console.error(e)
+      res.status(500).end(e.message)
     }
-
-    const html = template
-      .replace("<!-- SSR_APP -->", appHtml)
-      // 注入数据标签，用于客户端 hydrate
-      .replace(
-        "<!-- SSR_DATA -->",
-        `<script>window.__SSR_DATA__=${JSON.stringify(data)}</script>`
-      )
-
-    res.status(200).setHeader("Content-Type", "text/html").end(html)
   }
 }
 
@@ -84,6 +102,11 @@ async function createServer() {
 
   // 加入 Vite SSR 中间件
   app.use(await createSsrMiddleware(app))
+
+  // 注册中间件，生产环境端处理客户端资源
+  if (isProd) {
+    app.use(serve(path.join(cwd, "dist/client")))
+  }
 
   app.listen(3000, () => {
     console.log(`server is running at http://localhost:3000`)

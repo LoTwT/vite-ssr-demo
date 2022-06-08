@@ -54,6 +54,12 @@ async function createSsrMiddleware(app: Express): Promise<RequestHandler> {
 
   return async (req, res, next) => {
     try {
+      // 跳过 SSR
+      if (req.query?.csr) {
+        // 响应 CSR 模板内容
+        return
+      }
+
       const url = req.originalUrl
 
       if (!matchPageUrl(url)) {
@@ -93,6 +99,7 @@ async function createSsrMiddleware(app: Express): Promise<RequestHandler> {
       vite?.ssrFixStacktrace(e)
       console.error(e)
       res.status(500).end(e.message)
+      // 服务器执行出错，返回浏览器 CSR 模板内容
     }
   }
 }

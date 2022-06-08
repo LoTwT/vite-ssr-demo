@@ -14,3 +14,17 @@ ReactDOM.hydrate(
   </React.StrictMode>,
   document.getElementById("root")
 )
+
+async function fetchData() {
+  // 客户端获取数据
+}
+
+async function hydrate() {
+  let data
+  if (window.__SSR_DATA__) {
+    data = window.__SSR_DATA__
+  } else {
+    // 降级逻辑
+    data = await fetchData()
+  }
+}

@@ -11,7 +11,7 @@ const isProd = process.env.NODE_ENV === "production"
 const cwd = process.cwd()
 
 // 加载服务端入口模块
-async function loadSsrEntryModule(vite: ViteDevServer | null) {
+export async function loadSsrEntryModule(vite: ViteDevServer | null) {
   // 生产模式下直接 require 打包后的产物
   if (isProd) {
     const entryPath = path.join(cwd, "dist/server/entry-server.js")
@@ -24,7 +24,7 @@ async function loadSsrEntryModule(vite: ViteDevServer | null) {
   }
 }
 
-function resolveTemplatePath() {
+export function resolveTemplatePath() {
   return path.join(cwd, isProd ? "dist/client/index.html" : "index.html")
 }
 
